@@ -1,0 +1,99 @@
+# Security - Sensitive Files
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Environment Files
+.env
+*.env
+.env.local
+.env.production
+.env.staging
+
+# Configuration Files
+config.json
+secrets.json
+settings.json
+appsettings.json
+
+# Credentials
+credentials.json
+auth.json
+token.json
+
+# PowerShell Profiles
+Microsoft.PowerShell_profile.ps1
+profile.ps1
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Temporary Files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# IDE Files
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build Artifacts
+bin/
+obj/
+dist/
+build/
+out/
+
+# Package Files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Backup Files
+*.bak
+*.backup
+*.old
+
+# Test Results
+TestResults/
+*.trx
+*.coverage
+
+# Node.js (if applicable)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python (if applicable)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# PowerShell Modules Cache
+PSGetModuleInfo.xml
