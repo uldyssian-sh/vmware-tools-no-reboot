@@ -47,8 +47,8 @@ param(
 )
 
 Clear-Host
-Write-Host "=== VMware Tools Conditional Upgrade (No Reboot) ===" -ForegroundColor Cyan
-Write-Host ""
+Write-Information "=== VMware Tools Conditional Upgrade (No Reboot) ===" -InformationAction Continue
+Write-Information "" -InformationAction Continue
 
 # --- Check if PowerCLI is available (no slow module loading here) ---
 if (-not (Get-Command Connect-VIServer -ErrorAction SilentlyContinue)) {
@@ -70,8 +70,8 @@ if ([string]::IsNullOrWhiteSpace($vCenter)) {
     return
 }
 
-Write-Host ""
-Write-Host "Login to vCenter..." -ForegroundColor Cyan
+Write-Information "" -InformationAction Continue
+Write-Information "Login to vCenter..." -InformationAction Continue
 
 if (-not $Credential) {
     $Credential = Get-Credential -Message "Enter vCenter credentials"
@@ -79,7 +79,7 @@ if (-not $Credential) {
 
 try {
     Connect-VIServer -Server $vCenter -Credential $Credential -ErrorAction Stop | Out-Null
-    Write-Host "Connected to $vCenter" -ForegroundColor Green
+    Write-Information "Connected to $vCenter" -InformationAction Continue
 }
 catch {
     Write-Error "Failed to connect to vCenter: $($_.Exception.Message)"
@@ -87,7 +87,7 @@ catch {
 }
 
 # --- VM selection ---
-Write-Host ""
+Write-Information "" -InformationAction Continue
 if (-not $VMName) {
     $VMName = (Read-Host "Enter the VM NAME for VMware Tools upgrade").Trim()
 }
@@ -105,7 +105,7 @@ if (-not $vm) {
     return
 }
 
-Write-Host "VM found: $($vm.Name)" -ForegroundColor Green
+Write-Information "VM found: $($vm.Name)" -InformationAction Continue
 
 # --- Current VMware Tools state ---
 $guest = $vm.ExtensionData.Guest
@@ -114,8 +114,8 @@ $currentStatus2       = $guest.ToolsVersionStatus2    # e.g. guestToolsCurrent, 
 $currentToolsStatus   = $guest.ToolsStatus            # e.g. guestToolsSupportedOld, guestToolsCurrent
 $currentRunningStatus = $guest.ToolsRunningStatus     # e.g. guestToolsRunning
 
-Write-Host ""
-Write-Host "=== Current VMware Tools State ===" -ForegroundColor Cyan
+Write-Information "" -InformationAction Continue
+Write-Information "=== Current VMware Tools State ===" -InformationAction Continue
 [PSCustomObject]@{
     VMName              = $vm.Name
     ToolsVersion        = $currentVersion
@@ -125,8 +125,8 @@ Write-Host "=== Current VMware Tools State ===" -ForegroundColor Cyan
 } | Format-Table -AutoSize
 
 # --- Validate conditions ---
-Write-Host ""
-Write-Host "Checking upgrade conditions..." -ForegroundColor Cyan
+Write-Information "" -InformationAction Continue
+Write-Information "Checking upgrade conditions..." -InformationAction Continue
 $canRun = $true
 
 # Condition 1: Tools must be running
@@ -154,22 +154,22 @@ if ($currentStatus2 -eq "guestToolsNotInstalled" -or $currentToolsStatus -eq "to
 }
 
 if (-not $canRun) {
-    Write-Host ""
-    Write-Host "Upgrade conditions NOT met. No action taken." -ForegroundColor Red
+    Write-Information "" -InformationAction Continue
+    Write-Information "Upgrade conditions NOT met. No action taken." -InformationAction Continue
     Disconnect-VIServer -Confirm:$false | Out-Null
     return
 }
 
-Write-Host ""
-Write-Host "✔ All conditions OK. Proceeding with VMware Tools upgrade (No Reboot)..." -ForegroundColor Green
+Write-Information "" -InformationAction Continue
+Write-Information "✔ All conditions OK. Proceeding with VMware Tools upgrade (No Reboot)..." -InformationAction Continue
 
 # --- Upgrade VMware Tools (No Reboot) ---
-Write-Host ""
-Write-Host "Starting VMware Tools upgrade..." -ForegroundColor Cyan
+Write-Information "" -InformationAction Continue
+Write-Information "Starting VMware Tools upgrade..." -InformationAction Continue
 
 try {
     Update-Tools -VM $vm -NoReboot -ErrorAction Stop | Out-Null
-    Write-Host "Update-Tools command executed." -ForegroundColor Green
+    Write-Information "Update-Tools command executed." -InformationAction Continue
 }
 catch {
     Write-Error "Update-Tools failed: $($_.Exception.Message)"
@@ -177,8 +177,8 @@ catch {
     return
 }
 
-Write-Host ""
-Write-Host "Waiting 10 seconds for VMware Tools status to refresh..." -ForegroundColor Cyan
+Write-Information "" -InformationAction Continue
+Write-Information "Waiting 10 seconds for VMware Tools status to refresh..." -InformationAction Continue
 Start-Sleep -Seconds 10   # adjust if needed
 
 # --- Refresh state after upgrade ---
@@ -189,8 +189,8 @@ $newStatus2       = $guest.ToolsVersionStatus2
 $newToolsStatus   = $guest.ToolsStatus
 $newRunningStatus = $guest.ToolsRunningStatus
 
-Write-Host ""
-Write-Host "=== VMware Tools State AFTER Upgrade ===" -ForegroundColor Cyan
+Write-Information "" -InformationAction Continue
+Write-Information "=== VMware Tools State AFTER Upgrade ===" -InformationAction Continue
 [PSCustomObject]@{
     VMName              = $vm.Name
     OldVersion          = $currentVersion
@@ -201,7 +201,7 @@ Write-Host "=== VMware Tools State AFTER Upgrade ===" -ForegroundColor Cyan
 } | Format-Table -AutoSize
 
 # --- Success evaluation ---
-Write-Host ""
+Write-Information "" -InformationAction Continue
 $success = $false
 if ($newVersion -and $newVersion -ne $currentVersion -and
     $newRunningStatus -eq "guestToolsRunning" -and
@@ -211,15 +211,15 @@ if ($newVersion -and $newVersion -ne $currentVersion -and
 }
 
 if ($success) {
-    Write-Host "✔ VMware Tools upgrade SUCCESSFUL (no reboot triggered by script)." -ForegroundColor Green
+    Write-Information "✔ VMware Tools upgrade SUCCESSFUL (no reboot triggered by script)." -InformationAction Continue
 }
 else {
-    Write-Host "❌ VMware Tools upgrade might have FAILED or is INCOMPLETE." -ForegroundColor Red
-    Write-Host "   Check vSphere client and VM logs for more details." -ForegroundColor Yellow
+    Write-Information "❌ VMware Tools upgrade might have FAILED or is INCOMPLETE." -InformationAction Continue
+    Write-Information "   Check vSphere client and VM logs for more details." -InformationAction Continue
 }
 
 # --- Disconnect ---
-Write-Host ""
-Write-Host "Disconnecting from vCenter..." -ForegroundColor Cyan
+Write-Information "" -InformationAction Continue
+Write-Information "Disconnecting from vCenter..." -InformationAction Continue
 Disconnect-VIServer -Confirm:$false | Out-Null
-Write-Host "Disconnected." -ForegroundColor Green
+Write-Information "Disconnected." -InformationAction Continue
