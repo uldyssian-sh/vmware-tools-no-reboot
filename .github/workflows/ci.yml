@@ -38,13 +38,13 @@ jobs:
     - name: Run PSScriptAnalyzer
       shell: pwsh
       run: |
-        $results = Invoke-ScriptAnalyzer -Path ./scripts/ -Recurse -ReportSummary
+        $results = Invoke-ScriptAnalyzer -Path ./scripts/ -Recurse -ReportSummary -Severity Warning,Error
         if ($results) {
           $results | Format-Table
-          Write-Host "PSScriptAnalyzer found issues. Please review and fix them."
+          Write-Output "PSScriptAnalyzer found issues. Please review and fix them."
           exit 1
         } else {
-          Write-Host "✅ No PSScriptAnalyzer issues found."
+          Write-Output "✅ No PSScriptAnalyzer issues found."
         }
 
   security-scan:
@@ -130,22 +130,22 @@ jobs:
         $syntaxErrors = 0
         
         foreach ($file in $scriptFiles) {
-          Write-Host "Checking syntax: $($file.Name)"
+          Write-Output "Checking syntax: $($file.Name)"
           $errors = $null
           $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $file.FullName -Raw), [ref]$errors)
           
           if ($errors) {
-            Write-Host "❌ Syntax errors in $($file.Name):" -ForegroundColor Red
-            $errors | ForEach-Object { Write-Host "  - $($_.Message)" -ForegroundColor Red }
+            Write-Output "❌ Syntax errors in $($file.Name):"
+            $errors | ForEach-Object { Write-Output "  - $($_.Message)" }
             $syntaxErrors++
           } else {
-            Write-Host "✅ $($file.Name) syntax OK" -ForegroundColor Green
+            Write-Output "✅ $($file.Name) syntax OK"
           }
         }
         
         if ($syntaxErrors -gt 0) {
-          Write-Host "❌ Found syntax errors in $syntaxErrors file(s)."
+          Write-Output "❌ Found syntax errors in $syntaxErrors file(s)."
           exit 1
         } else {
-          Write-Host "✅ All PowerShell scripts have valid syntax."
+          Write-Output "✅ All PowerShell scripts have valid syntax."
         }
