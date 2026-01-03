@@ -1,46 +1,34 @@
 <#
 .SYNOPSIS
-    VMware Tools No-Reboot Upgrade PowerCLI Script
+    VMware Tools Conditional Upgrade (No Reboot) PowerCLI Script
     
 .DESCRIPTION
-    This script performs VMware Tools upgrades without requiring virtual machine reboots.
-    It uses advanced service management techniques to upgrade Tools while VMs remain powered on,
-    minimizing downtime and maintaining business continuity.
+    Upgrade VMware Tools on a single VM only if:
+    - VMware Tools are running
+    - Upgrade is needed (NeedUpgrade or SupportedOld)
+    - Tools are installed
+    Upgrade runs silently and does NOT trigger a guest OS reboot.
     
 .PARAMETER vCenter
-    vCenter Server FQDN or IP address
+    vCenter Server FQDN or IP address (optional - will prompt if not provided)
     
 .PARAMETER VMName
-    Specific VM name to upgrade (optional)
+    VM name to upgrade (optional - will prompt if not provided)
     
-.PARAMETER Cluster
-    Cluster name to process all VMs (optional)
-    
-.PARAMETER Datacenter
-    Datacenter name to process all VMs (optional)
-    
-.PARAMETER NoReboot
-    Enable no-reboot upgrade mode
-    
-.PARAMETER ValidationOnly
-    Run pre-upgrade validation only without performing upgrades
-    
-.PARAMETER BatchSize
-    Number of VMs to process simultaneously (default: 5)
-    
-.PARAMETER DryRun
-    Preview operations without making changes
+.PARAMETER Credential
+    vCenter credentials (optional - will prompt if not provided)
     
 .EXAMPLE
-    .\Upgrade-VMTools-NoReboot.ps1 -vCenter "vcenter.example.com" -VMName "VM-001" -NoReboot
+    .\Upgrade-VMTools-NoReboot.ps1
     
 .EXAMPLE
-    .\Upgrade-VMTools-NoReboot.ps1 -vCenter "vcenter.example.com" -Cluster "Production" -NoReboot -BatchSize 3
+    .\Upgrade-VMTools-NoReboot.ps1 -vCenter "vcenter.example.com" -VMName "VM-001"
     
 .NOTES
     Author: uldyssian-sh
     Version: 1.0.0
     Requires: PowerCLI, vCenter administrative privileges
+    Based on: Medium article methodology for no-reboot VMware Tools upgrades
     
 .LINK
     https://github.com/uldyssian-sh/vmware-tools-no-reboot
@@ -55,326 +43,183 @@ param(
     [string]$VMName,
     
     [Parameter(Mandatory = $false)]
-    [string]$Cluster,
-    
-    [Parameter(Mandatory = $false)]
-    [string]$Datacenter,
-    
-    [Parameter(Mandatory = $false)]
-    [switch]$NoReboot,
-    
-    [Parameter(Mandatory = $false)]
-    [switch]$ValidationOnly,
-    
-    [Parameter(Mandatory = $false)]
-    [int]$BatchSize = 5,
-    
-    [Parameter(Mandatory = $false)]
-    [switch]$DryRun
+    [PSCredential]$Credential
 )
 
-# Import required modules
+Clear-Host
+Write-Host "=== VMware Tools Conditional Upgrade (No Reboot) ===" -ForegroundColor Cyan
+Write-Host ""
+
+# --- Check if PowerCLI is available (no slow module loading here) ---
+if (-not (Get-Command Connect-VIServer -ErrorAction SilentlyContinue)) {
+    Write-Error "Connect-VIServer not found. Please run this script in a VMware PowerCLI console or load the PowerCLI module first (Import-Module VMware.PowerCLI)."
+    return
+}
+
+# --- (Optional) PowerCLI settings: CEIP off, ignore TLS warnings ---
+Set-PowerCLIConfiguration -Scope User -ParticipateInCEIP $false -Confirm:$false | Out-Null
+Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -Confirm:$false | Out-Null
+
+# --- vCenter input ---
+if (-not $vCenter) {
+    $vCenter = (Read-Host "Enter vCenter FQDN or IP").Trim()
+}
+
+if ([string]::IsNullOrWhiteSpace($vCenter)) {
+    Write-Error "No vCenter was entered. Exiting."
+    return
+}
+
+Write-Host ""
+Write-Host "Login to vCenter..." -ForegroundColor Cyan
+
+if (-not $Credential) {
+    $Credential = Get-Credential -Message "Enter vCenter credentials"
+}
+
 try {
-    Import-Module VMware.PowerCLI -ErrorAction Stop
-    Write-Host "✅ PowerCLI module loaded successfully" -ForegroundColor Green
-} catch {
-    Write-Error "❌ Failed to load PowerCLI module. Please install VMware PowerCLI."
-    exit 1
+    Connect-VIServer -Server $vCenter -Credential $Credential -ErrorAction Stop | Out-Null
+    Write-Host "Connected to $vCenter" -ForegroundColor Green
+}
+catch {
+    Write-Error "Failed to connect to vCenter: $($_.Exception.Message)"
+    return
 }
 
-# Disable certificate warnings for lab environments
-Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -Confirm:$false -Scope Session | Out-Null
-
-# Function to display banner
-function Show-Banner {
-    Write-Host ""
-    Write-Host "=== VMware Tools No-Reboot Upgrade ===" -ForegroundColor Cyan
-    Write-Host "Enterprise PowerCLI Solution for Zero-Downtime Upgrades" -ForegroundColor Gray
-    Write-Host ""
+# --- VM selection ---
+Write-Host ""
+if (-not $VMName) {
+    $VMName = (Read-Host "Enter the VM NAME for VMware Tools upgrade").Trim()
 }
 
-# Function to get vCenter connection
-function Connect-vCenterServer {
-    param([string]$Server)
-    
-    if (-not $Server) {
-        $Server = Read-Host "Enter vCenter FQDN or IP"
-    }
-    
-    try {
-        Write-Host "Connecting to vCenter: $Server..." -ForegroundColor Yellow
-        $credential = Get-Credential -Message "Enter vCenter credentials"
-        Connect-VIServer -Server $Server -Credential $credential -ErrorAction Stop | Out-Null
-        Write-Host "✅ Connected to vCenter successfully" -ForegroundColor Green
-        return $true
-    } catch {
-        Write-Error "❌ Failed to connect to vCenter: $($_.Exception.Message)"
-        return $false
-    }
+if ([string]::IsNullOrWhiteSpace($VMName)) {
+    Write-Error "No VM name was entered. Exiting."
+    Disconnect-VIServer -Confirm:$false | Out-Null
+    return
 }
 
-# Function to test no-reboot compatibility
-function Test-NoRebootCompatibility {
-    param([VMware.VimAutomation.ViCore.Types.V1.Inventory.VirtualMachine]$VM)
-    
-    $compatible = $true
-    $reasons = @()
-    
-    # Check power state
-    if ($VM.PowerState -ne "PoweredOn") {
-        $compatible = $false
-        $reasons += "VM must be powered on"
-    }
-    
-    # Check Tools status
-    if ($VM.ExtensionData.Guest.ToolsStatus -eq "toolsNotInstalled") {
-        $compatible = $false
-        $reasons += "VMware Tools not installed"
-    }
-    
-    # Check Tools version compatibility
-    $toolsVersion = $VM.ExtensionData.Guest.ToolsVersion
-    if ($toolsVersion -and $toolsVersion -lt 10000) {
-        $compatible = $false
-        $reasons += "Tools version too old for no-reboot upgrade"
-    }
-    
-    return @{
-        Compatible = $compatible
-        Reasons = $reasons
-        ToolsVersion = $toolsVersion
-        ToolsStatus = $VM.ExtensionData.Guest.ToolsStatus
-    }
+$vm = Get-VM -Name $VMName -ErrorAction SilentlyContinue
+if (-not $vm) {
+    Write-Error "VM '$VMName' not found!"
+    Disconnect-VIServer -Confirm:$false | Out-Null
+    return
 }
 
-# Function to perform no-reboot upgrade
-function Invoke-NoRebootUpgrade {
-    param(
-        [VMware.VimAutomation.ViCore.Types.V1.Inventory.VirtualMachine]$VM,
-        [switch]$DryRun
-    )
-    
-    $vmName = $VM.Name
-    Write-Host "[$vmName] Starting no-reboot upgrade..." -ForegroundColor Yellow
-    
-    if ($DryRun) {
-        Write-Host "[$vmName] DRY-RUN: Would perform no-reboot upgrade" -ForegroundColor Cyan
-        return @{ Success = $true; Message = "Dry-run completed" }
-    }
-    
-    try {
-        # Get current Tools version
-        $currentVersion = $VM.ExtensionData.Guest.ToolsVersion
-        Write-Host "[$vmName] Current Tools version: $currentVersion" -ForegroundColor Gray
-        
-        # Stop VMware Tools service gracefully
-        Write-Host "[$vmName] Stopping VMware Tools service..." -ForegroundColor Yellow
-        $stopResult = Invoke-VMScript -VM $VM -ScriptText "Stop-Service -Name 'VMTools' -Force" -GuestCredential $guestCred -ErrorAction SilentlyContinue
-        
-        # Perform the upgrade
-        Write-Host "[$vmName] Installing new Tools version..." -ForegroundColor Yellow
-        $upgradeTask = $VM | Update-Tools -NoReboot -RunAsync
-        
-        # Wait for upgrade completion
-        $timeout = 300 # 5 minutes
-        $elapsed = 0
-        while ($upgradeTask.State -eq "Running" -and $elapsed -lt $timeout) {
-            Start-Sleep -Seconds 10
-            $elapsed += 10
-            Write-Host "[$vmName] Upgrade in progress... ($elapsed/$timeout seconds)" -ForegroundColor Gray
-        }
-        
-        if ($upgradeTask.State -eq "Success") {
-            # Start VMware Tools service
-            Write-Host "[$vmName] Starting VMware Tools service..." -ForegroundColor Yellow
-            $startResult = Invoke-VMScript -VM $VM -ScriptText "Start-Service -Name 'VMTools'" -GuestCredential $guestCred -ErrorAction SilentlyContinue
-            
-            # Validate upgrade
-            Start-Sleep -Seconds 30 # Allow time for service to fully start
-            $VM = Get-VM -Name $vmName # Refresh VM object
-            $newVersion = $VM.ExtensionData.Guest.ToolsVersion
-            
-            if ($newVersion -gt $currentVersion) {
-                Write-Host "[$vmName] ✅ Upgrade completed successfully ($currentVersion → $newVersion)" -ForegroundColor Green
-                return @{ Success = $true; Message = "Upgrade successful"; OldVersion = $currentVersion; NewVersion = $newVersion }
-            } else {
-                Write-Host "[$vmName] ⚠️ Upgrade may not have completed properly" -ForegroundColor Yellow
-                return @{ Success = $false; Message = "Version validation failed" }
-            }
-        } else {
-            Write-Host "[$vmName] ❌ Upgrade task failed: $($upgradeTask.State)" -ForegroundColor Red
-            return @{ Success = $false; Message = "Upgrade task failed" }
-        }
-        
-    } catch {
-        Write-Host "[$vmName] ❌ Upgrade failed: $($_.Exception.Message)" -ForegroundColor Red
-        return @{ Success = $false; Message = $_.Exception.Message }
-    }
+Write-Host "VM found: $($vm.Name)" -ForegroundColor Green
+
+# --- Current VMware Tools state ---
+$guest = $vm.ExtensionData.Guest
+$currentVersion       = $guest.ToolsVersion
+$currentStatus2       = $guest.ToolsVersionStatus2    # e.g. guestToolsCurrent, guestToolsNeedUpgrade, guestToolsSupportedOld
+$currentToolsStatus   = $guest.ToolsStatus            # e.g. guestToolsSupportedOld, guestToolsCurrent
+$currentRunningStatus = $guest.ToolsRunningStatus     # e.g. guestToolsRunning
+
+Write-Host ""
+Write-Host "=== Current VMware Tools State ===" -ForegroundColor Cyan
+[PSCustomObject]@{
+    VMName              = $vm.Name
+    ToolsVersion        = $currentVersion
+    ToolsVersionStatus2 = $currentStatus2
+    ToolsStatus         = $currentToolsStatus
+    ToolsRunningStatus  = $currentRunningStatus
+} | Format-Table -AutoSize
+
+# --- Validate conditions ---
+Write-Host ""
+Write-Host "Checking upgrade conditions..." -ForegroundColor Cyan
+$canRun = $true
+
+# Condition 1: Tools must be running
+if ($currentRunningStatus -ne "guestToolsRunning") {
+    Write-Warning "❌ VMware Tools are not running (ToolsRunningStatus = $currentRunningStatus)."
+    $canRun = $false
 }
 
-# Function to get target VMs
-function Get-TargetVMs {
-    param(
-        [string]$VMName,
-        [string]$Cluster,
-        [string]$Datacenter
-    )
-    
-    $vms = @()
-    
-    if ($VMName) {
-        $vms = Get-VM -Name $VMName -ErrorAction SilentlyContinue
-        if (-not $vms) {
-            Write-Error "VM '$VMName' not found"
-            return @()
-        }
-    } elseif ($Cluster) {
-        $vms = Get-Cluster -Name $Cluster | Get-VM
-    } elseif ($Datacenter) {
-        $vms = Get-Datacenter -Name $Datacenter | Get-VM
-    } else {
-        $target = Read-Host "Enter target (VM name, Cluster name, or 'ALL' for all VMs)"
-        if ($target -eq "ALL") {
-            $vms = Get-VM
-        } else {
-            # Try as VM name first, then cluster
-            $vms = Get-VM -Name $target -ErrorAction SilentlyContinue
-            if (-not $vms) {
-                $vms = Get-Cluster -Name $target -ErrorAction SilentlyContinue | Get-VM
-            }
-        }
-    }
-    
-    return $vms
+# Condition 2: Upgrade must be needed (NeedUpgrade or SupportedOld)
+$upgradeNeeded = $false
+$upgradeStates = @("guestToolsNeedUpgrade", "guestToolsSupportedOld")
+if ($currentStatus2 -in $upgradeStates -or $currentToolsStatus -in $upgradeStates) {
+    $upgradeNeeded = $true
 }
 
-# Main execution
-function Main {
-    Show-Banner
-    
-    # Connect to vCenter
-    if (-not (Connect-vCenterServer -Server $vCenter)) {
-        exit 1
-    }
-    
-    # Get target VMs
-    $targetVMs = Get-TargetVMs -VMName $VMName -Cluster $Cluster -Datacenter $Datacenter
-    
-    if ($targetVMs.Count -eq 0) {
-        Write-Error "No target VMs found"
-        exit 1
-    }
-    
-    Write-Host "Found $($targetVMs.Count) target VMs" -ForegroundColor Green
-    
-    # Pre-upgrade validation
-    Write-Host ""
-    Write-Host "=== PRE-UPGRADE VALIDATION ===" -ForegroundColor Cyan
-    
-    $compatibleVMs = @()
-    $incompatibleVMs = @()
-    
-    foreach ($vm in $targetVMs) {
-        $compatibility = Test-NoRebootCompatibility -VM $vm
-        
-        $status = if ($compatibility.Compatible) { "✅ Compatible" } else { "❌ Incompatible" }
-        Write-Host "$($vm.Name): $status" -ForegroundColor $(if ($compatibility.Compatible) { "Green" } else { "Red" })
-        
-        if (-not $compatibility.Compatible) {
-            foreach ($reason in $compatibility.Reasons) {
-                Write-Host "  - $reason" -ForegroundColor Red
-            }
-            $incompatibleVMs += $vm
-        } else {
-            $compatibleVMs += $vm
-        }
-    }
-    
-    Write-Host ""
-    Write-Host "Compatible VMs for no-reboot upgrade: $($compatibleVMs.Count)" -ForegroundColor Green
-    if ($incompatibleVMs.Count -gt 0) {
-        Write-Host "Incompatible VMs (will be skipped): $($incompatibleVMs.Count)" -ForegroundColor Yellow
-    }
-    
-    if ($ValidationOnly) {
-        Write-Host ""
-        Write-Host "Validation-only mode completed." -ForegroundColor Cyan
-        Disconnect-VIServer -Confirm:$false
-        return
-    }
-    
-    if ($compatibleVMs.Count -eq 0) {
-        Write-Host "No compatible VMs found for upgrade." -ForegroundColor Yellow
-        Disconnect-VIServer -Confirm:$false
-        return
-    }
-    
-    # Confirm upgrade
-    if (-not $DryRun) {
-        $confirm = Read-Host "Proceed with no-reboot upgrade for $($compatibleVMs.Count) VMs? (y/N)"
-        if ($confirm -ne "y" -and $confirm -ne "Y") {
-            Write-Host "Upgrade cancelled by user." -ForegroundColor Yellow
-            Disconnect-VIServer -Confirm:$false
-            return
-        }
-    }
-    
-    # Perform upgrades
-    Write-Host ""
-    Write-Host "=== UPGRADE EXECUTION ===" -ForegroundColor Cyan
-    
-    $results = @()
-    $successful = 0
-    $failed = 0
-    
-    # Process VMs in batches
-    for ($i = 0; $i -lt $compatibleVMs.Count; $i += $BatchSize) {
-        $batch = $compatibleVMs[$i..([Math]::Min($i + $BatchSize - 1, $compatibleVMs.Count - 1))]
-        
-        Write-Host "Processing batch $([Math]::Floor($i / $BatchSize) + 1)..." -ForegroundColor Yellow
-        
-        foreach ($vm in $batch) {
-            $result = Invoke-NoRebootUpgrade -VM $vm -DryRun:$DryRun
-            $results += @{
-                VM = $vm.Name
-                Success = $result.Success
-                Message = $result.Message
-                OldVersion = $result.OldVersion
-                NewVersion = $result.NewVersion
-            }
-            
-            if ($result.Success) {
-                $successful++
-            } else {
-                $failed++
-            }
-        }
-        
-        # Brief pause between batches
-        if ($i + $BatchSize -lt $compatibleVMs.Count) {
-            Write-Host "Pausing 30 seconds between batches..." -ForegroundColor Gray
-            Start-Sleep -Seconds 30
-        }
-    }
-    
-    # Summary
-    Write-Host ""
-    Write-Host "=== UPGRADE SUMMARY ===" -ForegroundColor Cyan
-    Write-Host "Total processed: $($compatibleVMs.Count) VMs" -ForegroundColor White
-    Write-Host "Successful: $successful VMs" -ForegroundColor Green
-    Write-Host "Failed: $failed VMs" -ForegroundColor Red
-    
-    if ($DryRun) {
-        Write-Host "Mode: DRY-RUN (no changes made)" -ForegroundColor Cyan
-    } else {
-        Write-Host "Zero reboots required ✅" -ForegroundColor Green
-    }
-    
-    # Disconnect from vCenter
-    Disconnect-VIServer -Confirm:$false
-    Write-Host ""
-    Write-Host "Script completed successfully." -ForegroundColor Green
+if (-not $upgradeNeeded) {
+    Write-Warning "❌ VMware Tools are not in an upgradable state (ToolsVersionStatus2 = $currentStatus2, ToolsStatus = $currentToolsStatus)."
+    $canRun = $false
 }
 
-# Execute main function
-Main
+# Condition 3: Tools must be installed
+if ($currentStatus2 -eq "guestToolsNotInstalled" -or $currentToolsStatus -eq "toolsNotInstalled") {
+    Write-Warning "❌ VMware Tools are not installed on this VM."
+    $canRun = $false
+}
+
+if (-not $canRun) {
+    Write-Host ""
+    Write-Host "Upgrade conditions NOT met. No action taken." -ForegroundColor Red
+    Disconnect-VIServer -Confirm:$false | Out-Null
+    return
+}
+
+Write-Host ""
+Write-Host "✔ All conditions OK. Proceeding with VMware Tools upgrade (No Reboot)..." -ForegroundColor Green
+
+# --- Upgrade VMware Tools (No Reboot) ---
+Write-Host ""
+Write-Host "Starting VMware Tools upgrade..." -ForegroundColor Cyan
+
+try {
+    Update-Tools -VM $vm -NoReboot -ErrorAction Stop | Out-Null
+    Write-Host "Update-Tools command executed." -ForegroundColor Green
+}
+catch {
+    Write-Error "Update-Tools failed: $($_.Exception.Message)"
+    Disconnect-VIServer -Confirm:$false | Out-Null
+    return
+}
+
+Write-Host ""
+Write-Host "Waiting 10 seconds for VMware Tools status to refresh..." -ForegroundColor Cyan
+Start-Sleep -Seconds 10   # adjust if needed
+
+# --- Refresh state after upgrade ---
+$vm    = Get-VM -Name $vm.Name
+$guest = $vm.ExtensionData.Guest
+$newVersion       = $guest.ToolsVersion
+$newStatus2       = $guest.ToolsVersionStatus2
+$newToolsStatus   = $guest.ToolsStatus
+$newRunningStatus = $guest.ToolsRunningStatus
+
+Write-Host ""
+Write-Host "=== VMware Tools State AFTER Upgrade ===" -ForegroundColor Cyan
+[PSCustomObject]@{
+    VMName              = $vm.Name
+    OldVersion          = $currentVersion
+    NewVersion          = $newVersion
+    ToolsVersionStatus2 = $newStatus2
+    ToolsStatus         = $newToolsStatus
+    ToolsRunningStatus  = $newRunningStatus
+} | Format-Table -AutoSize
+
+# --- Success evaluation ---
+Write-Host ""
+$success = $false
+if ($newVersion -and $newVersion -ne $currentVersion -and
+    $newRunningStatus -eq "guestToolsRunning" -and
+    $newStatus2 -ne "guestToolsNeedUpgrade" -and
+    $newStatus2 -ne "guestToolsNotInstalled") {
+    $success = $true
+}
+
+if ($success) {
+    Write-Host "✔ VMware Tools upgrade SUCCESSFUL (no reboot triggered by script)." -ForegroundColor Green
+}
+else {
+    Write-Host "❌ VMware Tools upgrade might have FAILED or is INCOMPLETE." -ForegroundColor Red
+    Write-Host "   Check vSphere client and VM logs for more details." -ForegroundColor Yellow
+}
+
+# --- Disconnect ---
+Write-Host ""
+Write-Host "Disconnecting from vCenter..." -ForegroundColor Cyan
+Disconnect-VIServer -Confirm:$false | Out-Null
+Write-Host "Disconnected." -ForegroundColor Green
