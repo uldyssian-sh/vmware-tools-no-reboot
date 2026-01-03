@@ -1,0 +1,25 @@
+# VMware Tools Upgrade Log Template
+
+Date: {DATE}
+Time: {TIME}
+vCenter: {VCENTER_SERVER}
+VM: {VM_NAME}
+
+## Pre-Upgrade State
+Tools Version: {OLD_VERSION}
+Tools Status: {OLD_STATUS}
+Running Status: {RUNNING_STATUS}
+
+## Upgrade Process
+Start Time: {START_TIME}
+End Time: {END_TIME}
+Duration: {DURATION}
+Method: No-Reboot Upgrade
+
+## Post-Upgrade State
+New Version: {NEW_VERSION}
+New Status: {NEW_STATUS}
+Success: {SUCCESS_STATUS}
+
+## Notes
+{ADDITIONAL_NOTES}
