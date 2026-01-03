@@ -1,0 +1,151 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  powershell-analysis:
+    name: PowerShell Script Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install PowerShell
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget apt-transport-https software-properties-common
+        wget -q https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
+        sudo dpkg -i packages-microsoft-prod.deb
+        sudo apt-get update
+        sudo apt-get install -y powershell
+        
+    - name: Install PSScriptAnalyzer
+      shell: pwsh
+      run: |
+        Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+        
+    - name: Run PSScriptAnalyzer
+      shell: pwsh
+      run: |
+        $results = Invoke-ScriptAnalyzer -Path ./scripts/ -Recurse -ReportSummary
+        if ($results) {
+          $results | Format-Table
+          Write-Host "PSScriptAnalyzer found issues. Please review and fix them."
+          exit 1
+        } else {
+          Write-Host "✅ No PSScriptAnalyzer issues found."
+        }
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run security scan
+      shell: bash
+      run: |
+        echo "🔍 Scanning for sensitive data..."
+        
+        # Check for potential sensitive data patterns
+        if grep -r -i "password\|secret\|key\|token" --include="*.ps1" --include="*.md" .; then
+          echo "⚠️ Potential sensitive data found. Please review."
+        else
+          echo "✅ No sensitive data patterns detected."
+        fi
+        
+        # Check for hardcoded credentials
+        if grep -r -E "(username|password)\s*=\s*['\"][^'\"]+['\"]" --include="*.ps1" .; then
+          echo "❌ Hardcoded credentials detected!"
+          exit 1
+        else
+          echo "✅ No hardcoded credentials found."
+        fi
+
+  documentation-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check documentation
+      shell: bash
+      run: |
+        echo "📚 Checking documentation completeness..."
+        
+        # Check if README exists and has required sections
+        if [ ! -f "README.md" ]; then
+          echo "❌ README.md is missing!"
+          exit 1
+        fi
+        
+        # Check for required sections in README
+        required_sections=("Overview" "Quick Start" "Usage Guide" "Contributors")
+        for section in "${required_sections[@]}"; do
+          if ! grep -q "$section" README.md; then
+            echo "❌ Missing required section: $section"
+            exit 1
+          fi
+        done
+        
+        echo "✅ Documentation check passed."
+
+  powershell-syntax:
+    name: PowerShell Syntax Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install PowerShell
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget apt-transport-https software-properties-common
+        wget -q https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
+        sudo dpkg -i packages-microsoft-prod.deb
+        sudo apt-get update
+        sudo apt-get install -y powershell
+        
+    - name: Syntax validation
+      shell: pwsh
+      run: |
+        $scriptFiles = Get-ChildItem -Path ./scripts/ -Filter "*.ps1" -Recurse
+        $syntaxErrors = 0
+        
+        foreach ($file in $scriptFiles) {
+          Write-Host "Checking syntax: $($file.Name)"
+          $errors = $null
+          $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $file.FullName -Raw), [ref]$errors)
+          
+          if ($errors) {
+            Write-Host "❌ Syntax errors in $($file.Name):" -ForegroundColor Red
+            $errors | ForEach-Object { Write-Host "  - $($_.Message)" -ForegroundColor Red }
+            $syntaxErrors++
+          } else {
+            Write-Host "✅ $($file.Name) syntax OK" -ForegroundColor Green
+          }
+        }
+        
+        if ($syntaxErrors -gt 0) {
+          Write-Host "❌ Found syntax errors in $syntaxErrors file(s)."
+          exit 1
+        } else {
+          Write-Host "✅ All PowerShell scripts have valid syntax."
+        }
