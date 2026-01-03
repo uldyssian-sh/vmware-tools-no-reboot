@@ -1,0 +1,7 @@
+# Workflow Trigger
+Repository: vmware-tools-no-reboot
+Triggered: January 3, 2026
+Purpose: Activate actions-user contributor
+
+This file triggers the contributors workflow to activate actions-user.
+After workflow runs, actions-user will appear in contributors list.

@@ -1,4 +1,4 @@
-# VMware Tools No-Reboot Upgrade PowerCLI Solution
+# VMware Tools Conditional No-Reboot Upgrade PowerCLI Solution
 
 [![PowerCLI](https://img.shields.io/badge/PowerCLI-Compatible-blue.svg)](https://github.com/uldyssian-sh/vmware-tools-no-reboot)
 [![VMware](https://img.shields.io/badge/VMware-vSphere-green.svg)](https://github.com/uldyssian-sh/vmware-tools-no-reboot)
@@ -9,31 +9,30 @@
 
 ## 📋 Overview
 
-This PowerCLI solution provides enterprise-grade automation for upgrading VMware Tools without requiring virtual machine reboots. The script implements advanced techniques to perform in-place VMware Tools upgrades while VMs remain powered on, minimizing downtime and maintaining business continuity.
+This PowerCLI solution provides intelligent conditional upgrading of VMware Tools without requiring virtual machine reboots. The script performs comprehensive validation before upgrading, ensuring that upgrades only occur when necessary and safe, while maintaining zero downtime for your virtual infrastructure.
 
-> **Latest Update**: Repository includes comprehensive no-reboot upgrade strategies, service management, and enterprise-grade monitoring capabilities.
+> **Based on**: Medium article methodology for conditional no-reboot VMware Tools upgrades with comprehensive state validation.
 
 ![VMware Tools No-Reboot Upgrade Process](https://miro.medium.com/v2/resize:fit:720/format:webp/1*Fah91BFN4VYkjqjzvVIS7g.jpeg)
 
-*Enterprise PowerCLI solution for zero-downtime VMware Tools upgrades*
+*Intelligent conditional upgrade solution for VMware Tools without reboots*
 
 ## 🎯 Key Features
 
-- **Zero Downtime**: Upgrade VMware Tools without VM reboots
-- **Service Management**: Intelligent VMware Tools service handling
-- **Bulk Operations**: Process multiple VMs simultaneously with controlled batching
-- **Safety Validation**: Pre-upgrade compatibility checks and post-upgrade verification
-- **Rollback Capability**: Automatic rollback on upgrade failures
-- **Enterprise Ready**: Production-grade solution with comprehensive logging and monitoring
+- **Conditional Upgrade Logic**: Upgrades only when VMware Tools need updating and conditions are met
+- **Comprehensive State Validation**: Checks ToolsVersionStatus2, ToolsStatus, and ToolsRunningStatus
+- **Zero Downtime**: No VM reboots required during upgrade process
+- **Intelligent Pre-Checks**: Validates Tools are running, installed, and upgradeable
+- **Before/After Comparison**: Detailed state reporting and success validation
+- **Enterprise Ready**: Professional error handling and credential management
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- **PowerCLI**: VMware PowerCLI module installed and loaded
+- **PowerCLI**: VMware PowerCLI module must be already loaded in session
 - **vCenter Access**: Administrative privileges on target vCenter Server
-- **PowerShell**: PowerShell 5.1 or later (Windows PowerShell or PowerShell Core)
-- **VM Requirements**: VMs must be powered on with VMware Tools already installed
+- **VM Requirements**: VM must be powered on with VMware Tools running
 
 ### Installation
 
@@ -42,13 +41,7 @@ This PowerCLI solution provides enterprise-grade automation for upgrading VMware
 git clone https://github.com/uldyssian-sh/vmware-tools-no-reboot.git
 cd vmware-tools-no-reboot
 
-# Install required PowerShell modules
-.\requirements.psd1  # Run the installation script
-
-# Configure execution policy (if needed)
-.\scripts\Set-ExecutionPolicy-Helper.ps1
-
-# Run the no-reboot upgrade script
+# Run the conditional upgrade script
 .\scripts\Upgrade-VMTools-NoReboot.ps1
 ```
 
@@ -56,100 +49,106 @@ cd vmware-tools-no-reboot
 
 ### Basic Usage
 
-1. **Run Pre-Upgrade Validation** (recommended first step):
+1. **Interactive Mode** (recommended):
    ```powershell
-   .\Upgrade-VMTools-NoReboot.ps1 -ValidationOnly
-   # Checks VM compatibility and current Tools status
+   .\Upgrade-VMTools-NoReboot.ps1
+   # Script will prompt for vCenter and VM name
    ```
 
-2. **Perform No-Reboot Upgrade** (single VM):
+2. **Parameter Mode**:
    ```powershell
-   .\Upgrade-VMTools-NoReboot.ps1 -VMName "VM-001" -NoReboot
+   .\Upgrade-VMTools-NoReboot.ps1 -vCenter "vcenter.example.com" -VMName "VM-001"
    ```
 
-3. **Bulk No-Reboot Upgrade** (multiple VMs):
+3. **With Credentials**:
    ```powershell
-   .\Upgrade-VMTools-NoReboot.ps1 -Cluster "Production-Cluster" -NoReboot -BatchSize 5
+   $cred = Get-Credential
+   .\Upgrade-VMTools-NoReboot.ps1 -vCenter "vcenter.example.com" -VMName "VM-001" -Credential $cred
    ```
 
-### Interactive Prompts
+### Upgrade Conditions
 
-The script will prompt for:
-- **vCenter Server**: FQDN or IP address of your vCenter Server
-- **Credentials**: vCenter administrator credentials
-- **Target Selection**: VM names, clusters, or datacenters
-- **Upgrade Strategy**: No-reboot method selection
-- **Confirmation**: Final confirmation before starting upgrades
+The script performs conditional upgrades only when ALL conditions are met:
+
+1. **VMware Tools Running**: ToolsRunningStatus must be "guestToolsRunning"
+2. **Upgrade Needed**: ToolsVersionStatus2 or ToolsStatus must be "guestToolsNeedUpgrade" or "guestToolsSupportedOld"
+3. **Tools Installed**: Tools must not be in "guestToolsNotInstalled" or "toolsNotInstalled" state
 
 ### Sample Output
 
 ```
-=== VMware Tools No-Reboot Upgrade ===
+=== VMware Tools Conditional Upgrade (No Reboot) ===
 
 Enter vCenter FQDN or IP: vcenter.example.com
-Target: Production-Cluster
-Strategy: No-Reboot Upgrade
+Login to vCenter...
+Connected to vcenter.example.com
 
-=== PRE-UPGRADE VALIDATION ===
-VMName          PowerState ToolsVersion  ToolsStatus    NoRebootCapable
-------          ---------- ------------  -----------    ---------------
-VM-001          PoweredOn  12.1.5        toolsOk        Yes
-VM-002          PoweredOn  11.3.5        toolsOld       Yes
-VM-003          PoweredOn  12.0.0        toolsOld       Yes
+Enter the VM NAME for VMware Tools upgrade: VM-001
+VM found: VM-001
 
-Compatible VMs for no-reboot upgrade: 3
+=== Current VMware Tools State ===
+VMName              ToolsVersion ToolsVersionStatus2    ToolsStatus           ToolsRunningStatus
+------              ------------ -------------------    -----------           ------------------
+VM-001              12.1.5       guestToolsNeedUpgrade guestToolsSupportedOld guestToolsRunning
 
-=== UPGRADE EXECUTION ===
-[VM-001] Starting no-reboot upgrade...
-[VM-001] Stopping VMware Tools service...
-[VM-001] Installing new Tools version...
-[VM-001] Starting VMware Tools service...
-[VM-001] Validating upgrade success...
-[VM-001] ✅ Upgrade completed successfully (12.1.5 → 12.2.0)
+Checking upgrade conditions...
+✔ All conditions OK. Proceeding with VMware Tools upgrade (No Reboot)...
 
-Total upgraded: 3/3 VMs
-Average upgrade time: 45 seconds per VM
-Zero reboots required ✅
+Starting VMware Tools upgrade...
+Update-Tools command executed.
+
+Waiting 10 seconds for VMware Tools status to refresh...
+
+=== VMware Tools State AFTER Upgrade ===
+VMName OldVersion NewVersion ToolsVersionStatus2 ToolsStatus      ToolsRunningStatus
+------ ---------- ---------- ------------------- -----------      ------------------
+VM-001 12.1.5     12.2.0     guestToolsCurrent   guestToolsCurrent guestToolsRunning
+
+✔ VMware Tools upgrade SUCCESSFUL (no reboot triggered by script).
 ```
 
 ## 🔧 Technical Details
 
-### No-Reboot Upgrade Process
+### Conditional Upgrade Process
 
-1. **Pre-Validation Phase**: 
-   - Check VM power state and Tools status
-   - Verify no-reboot upgrade compatibility
-   - Validate sufficient disk space and resources
+1. **PowerCLI Validation**: Checks if Connect-VIServer is available (assumes PowerCLI already loaded)
+2. **vCenter Connection**: Establishes secure connection with credential validation
+3. **VM Discovery**: Locates target VM and validates existence
+4. **State Assessment**: Comprehensive VMware Tools state evaluation
+5. **Condition Validation**: Verifies all upgrade prerequisites are met
+6. **Upgrade Execution**: Performs no-reboot upgrade using Update-Tools -NoReboot
+7. **Post-Upgrade Validation**: Confirms successful upgrade and state changes
 
-2. **Service Management Phase**:
-   - Gracefully stop VMware Tools services
-   - Preserve service configurations and settings
-   - Maintain network connectivity during upgrade
+### VMware Tools State Validation
 
-3. **Upgrade Execution Phase**:
-   - Download and install new Tools version
-   - Update drivers and components in-place
-   - Preserve VM customizations and settings
+The script evaluates multiple VMware Tools status fields:
 
-4. **Post-Upgrade Validation**:
-   - Restart VMware Tools services
-   - Verify all components are functional
-   - Validate network and storage connectivity
+- **ToolsVersion**: Current installed version number
+- **ToolsVersionStatus2**: Detailed version status (guestToolsCurrent, guestToolsNeedUpgrade, guestToolsSupportedOld)
+- **ToolsStatus**: General Tools status (guestToolsCurrent, guestToolsSupportedOld, toolsNotInstalled)
+- **ToolsRunningStatus**: Service running state (guestToolsRunning, guestToolsNotRunning)
 
-### Supported Upgrade Scenarios
+### Upgrade Conditions Logic
 
-- **Minor Version Upgrades**: 12.1.x → 12.2.x (No reboot required)
-- **Patch Updates**: 12.1.5 → 12.1.10 (No reboot required)
-- **Service Pack Updates**: With compatible drivers (No reboot required)
-- **Major Version Upgrades**: 11.x → 12.x (Reboot may be required for some components)
+```powershell
+# Condition 1: Tools must be running
+$currentRunningStatus -eq "guestToolsRunning"
+
+# Condition 2: Upgrade needed
+$upgradeStates = @("guestToolsNeedUpgrade", "guestToolsSupportedOld")
+$currentStatus2 -in $upgradeStates -or $currentToolsStatus -in $upgradeStates
+
+# Condition 3: Tools installed
+$currentStatus2 -ne "guestToolsNotInstalled" -and $currentToolsStatus -ne "toolsNotInstalled"
+```
 
 ### Safety Features
 
-- **Compatibility Checking**: Pre-upgrade validation of VM and Tools compatibility
-- **Service Preservation**: Maintains all VMware Tools service configurations
-- **Automatic Rollback**: Reverts changes if upgrade fails
-- **Health Monitoring**: Continuous monitoring during upgrade process
-- **Batch Processing**: Controlled batch execution to prevent resource exhaustion
+- **Pre-Condition Validation**: Comprehensive state checking before upgrade
+- **Error Handling**: Graceful error handling with detailed messages
+- **Connection Management**: Proper vCenter connection lifecycle
+- **State Comparison**: Before/after upgrade state validation
+- **Success Verification**: Multi-factor upgrade success evaluation
 
 ## 📁 Repository Structure
 
