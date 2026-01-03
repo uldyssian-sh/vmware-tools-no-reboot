@@ -1,35 +1,35 @@
-<#
+﻿<#
 .SYNOPSIS
     VMware Tools Conditional Upgrade (No Reboot) PowerCLI Script
-    
+
 .DESCRIPTION
     Upgrade VMware Tools on a single VM only if:
     - VMware Tools are running
     - Upgrade is needed (NeedUpgrade or SupportedOld)
     - Tools are installed
     Upgrade runs silently and does NOT trigger a guest OS reboot.
-    
+
 .PARAMETER vCenter
     vCenter Server FQDN or IP address (optional - will prompt if not provided)
-    
+
 .PARAMETER VMName
     VM name to upgrade (optional - will prompt if not provided)
-    
+
 .PARAMETER Credential
     vCenter credentials (optional - will prompt if not provided)
-    
+
 .EXAMPLE
     .\Upgrade-VMTools-NoReboot.ps1
-    
+
 .EXAMPLE
     .\Upgrade-VMTools-NoReboot.ps1 -vCenter "vcenter.example.com" -VMName "VM-001"
-    
+
 .NOTES
     Author: uldyssian-sh
     Version: 1.0.0
     Requires: PowerCLI, vCenter administrative privileges
     Based on: Medium article methodology for no-reboot VMware Tools upgrades
-    
+
 .LINK
     https://github.com/uldyssian-sh/vmware-tools-no-reboot
 #>
@@ -38,10 +38,10 @@
 param(
     [Parameter(Mandatory = $false)]
     [string]$vCenter,
-    
+
     [Parameter(Mandatory = $false)]
     [string]$VMName,
-    
+
     [Parameter(Mandatory = $false)]
     [PSCredential]$Credential
 )
