@@ -260,11 +260,7 @@ We welcome contributions to improve this no-reboot upgrade solution:
 - Test thoroughly with different VMware Tools versions
 - Document compatibility requirements and limitations
 
-## 👥 Contributors
 
-- **uldyssian-sh LT** - *Project Maintainer* - [uldyssian-sh](https://github.com/uldyssian-sh)
-- **dependabot[bot]** - *Dependency Updates* - [dependabot](https://github.com/dependabot)
-- **actions-user** - *Automated Workflows* - GitHub Actions
 
 ## 📞 Support
 
