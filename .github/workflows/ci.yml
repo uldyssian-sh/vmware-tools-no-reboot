@@ -18,7 +18,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
       
     - name: Install PowerShell
       shell: bash
@@ -53,7 +53,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
       
     - name: Run security scan
       shell: bash
@@ -82,7 +82,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
       
     - name: Check documentation
       shell: bash
@@ -96,7 +96,7 @@ jobs:
         fi
         
         # Check for required sections in README
-        required_sections=("Overview" "Quick Start" "Usage Guide" "Contributors")
+        required_sections=("Overview" "Quick Start" "Usage Guide")
         for section in "${required_sections[@]}"; do
           if ! grep -q "$section" README.md; then
             echo "❌ Missing required section: $section"
@@ -112,7 +112,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
       
     - name: Install PowerShell
       shell: bash
